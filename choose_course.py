@@ -1,7 +1,7 @@
 import requests
 import json
 import re
-from time import sleep
+import time
 from bs4 import BeautifulSoup
 from login import login
 from random import uniform
@@ -143,7 +143,7 @@ def choose_course(new_course_code, PERIOD, old_course_code=None, reason=None, st
             # 此处删掉的内容约 4 行左右，
             # 用于得到换班时的 request_ID
 
-        sleep(PERIOD * 0.5 * uniform(0.6, 1.4))
+        time.sleep(PERIOD * 0.5 * uniform(0.6, 1.4))
 
         add_drop_url = 'https://jw.ustc.edu.cn/ws/for-std/course-select/add-drop-response'
         add_drop_data = {
@@ -167,7 +167,7 @@ def choose_course(new_course_code, PERIOD, old_course_code=None, reason=None, st
         else:
             print("选课失败，失败原因： " + temp_5['errorMessage']['textZh'])
 
-        sleep(PERIOD * 0.5 * uniform(0.6, 1.4))
+        time.sleep(PERIOD * 0.5 * uniform(0.6, 1.4))
 
 
 if __name__ == "__main__":
@@ -183,9 +183,11 @@ if __name__ == "__main__":
             choose_course('001511.02', 10, stable_mode=True)
             break
         except Exception as e:
-            tmp = "第%d次出现异常！" % (i+1)
-            print(tmp)
-            print(e)
-            send_mail(tmp, str(e))
-            sleep(30)
+            timestamp = time.asctime(time.localtime(time.time()))
+            title = "第 %d 次出现异常！ %s" % (i+1, timestamp)
+            body = "%s %s" % (str(e), timestamp)
+            print(title)
+            print(body)
+            send_mail(title, body)
+            time.sleep(30)
             continue
