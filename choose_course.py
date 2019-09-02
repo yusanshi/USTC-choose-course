@@ -9,17 +9,20 @@ from send_mail import send_mail
 from config import HEADERS, HEADERS_JSON, MAX_TIME
 
 
-def code_to_ID(all_lessons, code):
-    if code == None:
-        result = None
-    else:
-        result = None
+def parse_from_code(all_lessons, course_code):
+    course_ID = None
+    course_name = None
+    course_teacher = None
+    if course_code != None:
         for item in all_lessons:
-            if item['code'] == code:
-                result = str(item['id'])
+            if item['code'] == course_code:
+                course_ID = str(item['id'])
+                course_name = item['course']['nameZh']
+                course_teacher = ' '.join(
+                    teacher['nameZh'] for teacher in item['teachers'])
                 break
 
-    return result
+    return course_ID, course_name, course_teacher
 
 
 def get_student_ID(brow):
@@ -72,8 +75,10 @@ def choose_course(new_course_code, PERIOD, old_course_code=None, reason=None, st
     addable_lessons_json = get_addable_lessons_json(
         brow, course_select_Turn_ID, student_ID)
 
-    new_course_ID = code_to_ID(addable_lessons_json, new_course_code)
-    old_course_ID = code_to_ID(addable_lessons_json, old_course_code)
+    new_course_ID, new_course_name, new_course_teacher = parse_from_code(
+        addable_lessons_json, new_course_code)
+    old_course_ID, old_course_name, old_course_teacher = parse_from_code(
+        addable_lessons_json, old_course_code)
 
     if old_course_ID != None:
         course_select = 'https://jw.ustc.edu.cn/for-std/course-select'
@@ -82,6 +87,12 @@ def choose_course(new_course_code, PERIOD, old_course_code=None, reason=None, st
         semester_ID_temp = brow.get(
             url_temp, headers=HEADERS, allow_redirects=False)
         semester_ID = get_semester_ID(semester_ID_temp)
+
+    if old_course_ID == None:
+        print("开始选 %s 的《%s》..." % (new_course_teacher, new_course_name))
+    else:
+        print("开始将《%s》从 %s 换到 %s" %
+              (new_course_name, old_course_teacher, new_course_teacher))
 
     count = 1
     while True:
@@ -161,8 +172,10 @@ def choose_course(new_course_code, PERIOD, old_course_code=None, reason=None, st
         if temp_5 == None:
             print("响应为空，重试...")
         elif temp_5['success'] == True:
-            print("选课成功，程序退出！")
-            send_mail('选课成功，程序退出！', '选课成功，程序退出！')
+            message = "成功选择 %s 的《%s》，程序退出！" % (
+                new_course_teacher, new_course_name)
+            print(message)
+            send_mail(message, message)
             break
         else:
             print("选课失败，失败原因： " + temp_5['errorMessage']['textZh'])
@@ -180,7 +193,7 @@ if __name__ == "__main__":
     # choose_course('001511.02', 1)
     for i in range(MAX_TIME):
         try:
-            choose_course('001511.02', 10, stable_mode=True)
+            choose_course('PE00120.02', 5, stable_mode=True)
             break
         except Exception as e:
             timestamp = time.asctime(time.localtime(time.time()))
