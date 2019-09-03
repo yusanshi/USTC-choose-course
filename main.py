@@ -54,7 +54,7 @@ class Selector:
             html.headers['location'], headers=HEADERS, allow_redirects=False)
         return session2
 
-    def re_login(self):
+    def relogin(self):
         self.brow = self.login()
 
     def get_student_ID(self):
@@ -134,7 +134,7 @@ class Direct_Selector(Selector):
 
             if self.stable_mode:
                 print("重新登录中...")
-                self.re_login()
+                self.relogin()
                 # Must add this, or new "brow" can't get/post in following request
                 self.get_student_ID()
 
@@ -208,9 +208,10 @@ class Course_Changer(Selector):
 
             if self.stable_mode:
                 print("重新登录中...")
-                self.re_login()
+                self.relogin()
                 # Must add this, or new "brow" can't get/post in following request
                 self.get_student_ID()
+                
             pre_check_url = 'https://jw.ustc.edu.cn/for-std/course-adjustment-apply/preCheck'
             pre_check_data = [{
                 'oldLessonAssoc': int(self.old_course_ID),
@@ -267,9 +268,9 @@ def main():
     parser = argparse.ArgumentParser(
         description='Support choosing course directly or changing course. If choosing course, provide new course code. If changing course, also provide old course code and reason to change.')
     parser.add_argument("new_course_code", type=str,
-                        help="New course code, e.g. PE00120.02")
+                        help="New course code (i.e. PE00120.02)")
     parser.add_argument("old_course_code", type=str, nargs='?',
-                        help="Old course code, e.g. PE00120.01")
+                        help="Old course code (i.e. PE00120.01)")
     parser.add_argument("reason", type=str, nargs='?',
                         help="Reason to change course")
     parser.add_argument(
