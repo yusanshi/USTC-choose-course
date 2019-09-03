@@ -295,7 +295,6 @@ def main():
             print(body)
             worker.sender.send_mail(title, body)
             time.sleep(30)
-            continue
 
 
 if __name__ == "__main__":
