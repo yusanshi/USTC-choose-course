@@ -26,7 +26,8 @@ class Mail_Sender:
 
 
 class Selector:
-    def __init__(self):
+    def __init__(self, identity):
+        self.identity = identity
         self.brow = self.login()
         self.sender = Mail_Sender()
         self.student_ID = self.get_student_ID()
@@ -54,7 +55,7 @@ class Selector:
             html.headers['location'], headers=HEADERS, allow_redirects=False)
         return session2
 
-    def relogin(self):
+    def re_login(self):
         self.brow = self.login()
 
     def get_student_ID(self):
@@ -115,8 +116,8 @@ class Selector:
 
 
 class Direct_Selector(Selector):
-    def __init__(self, new_course_code, period, stable_mode):
-        super().__init__()
+    def __init__(self, new_course_code, period, stable_mode, identity):
+        super().__init__(identity)
         self.new_course_code = new_course_code
         self.period = period
         self.stable_mode = stable_mode
@@ -134,7 +135,7 @@ class Direct_Selector(Selector):
 
             if self.stable_mode:
                 print("重新登录中...")
-                self.relogin()
+                self.re_login()
                 # Must add this, or new "brow" can't get/post in following request
                 self.get_student_ID()
 
@@ -170,8 +171,8 @@ class Direct_Selector(Selector):
 
 
 class Course_Changer(Selector):
-    def __init__(self, new_course_code, period, old_course_code, reason, stable_mode):
-        super().__init__()
+    def __init__(self, new_course_code, period, old_course_code, reason, stable_mode, identity):
+        super().__init__(identity)
         self.new_course_code = new_course_code
         self.period = period
         self.old_course_code = old_course_code
@@ -208,7 +209,7 @@ class Course_Changer(Selector):
 
             if self.stable_mode:
                 print("重新登录中...")
-                self.relogin()
+                self.re_login()
                 # Must add this, or new "brow" can't get/post in following request
                 self.get_student_ID()
                 
@@ -245,7 +246,7 @@ class Course_Changer(Selector):
             # TODO
             # 此处删掉的内容约 4 行左右，
             # 用于得到换班时的 request_ID
-			
+
             time.sleep(self.period * 0.5 * uniform(0.6, 1.4))
 
             result = self.process_request_ID(request_ID)
@@ -268,21 +269,23 @@ def main():
     parser = argparse.ArgumentParser(
         description='Support choosing course directly or changing course. If choosing course, provide new course code. If changing course, also provide old course code and reason to change.')
     parser.add_argument("new_course_code", type=str,
-                        help="New course code (i.e. PE00120.02)")
+                        help="New course code, e.g. PE00120.02")
     parser.add_argument("old_course_code", type=str, nargs='?',
-                        help="Old course code (i.e. PE00120.01)")
+                        help="Old course code, e.g. PE00120.01")
     parser.add_argument("reason", type=str, nargs='?',
                         help="Reason to change course")
     parser.add_argument(
         "-p", "--period", type=float, default=5.0, help="Specify a period. (unit: second, default: 5.0)")
     parser.add_argument(
         "-s", "--stable_mode", type=bool, default=False, help="Whether to enable stable mode. If enabled, this script will relogin after each try (default: False)")
+    parser.add_argument(
+        "-i", "--identity", type=str, default='undergraduate', choices=['undergraduate', 'postgraduate'], help="Your identity, undergraduate or postgraduate (default: undergraduate)")
     args = parser.parse_args()
 
     # print(args)
 
-    worker = Direct_Selector(args.new_course_code, args.period, args.stable_mode) if args.old_course_code == None else Course_Changer(
-        args.new_course_code, args.period, args.old_course_code, args.reason, args.stable_mode)
+    worker = Direct_Selector(args.new_course_code, args.period, args.stable_mode, args.identity) if args.old_course_code == None else Course_Changer(
+        args.new_course_code, args.period, args.old_course_code, args.reason, args.stable_mode, args.identity)
 
     for i in range(MAX_TIME):
         try:
