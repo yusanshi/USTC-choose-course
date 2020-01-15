@@ -11,8 +11,9 @@ from email.header import Header
 from config import *
 
 
-class Mail_Sender:
-    def send_mail(self, title, body):
+class MailSender:
+    @staticmethod
+    def send_mail(title, body):
         message = MIMEText('<h1>' + body + '</h1>', 'html', 'utf-8')
         message['From'] = SENDER
         message['To'] = RECEIVER
@@ -29,7 +30,6 @@ class Selector:
     def __init__(self, identity):
         self.identity = identity
         self.brow = self.login()
-        self.sender = Mail_Sender()
         self.student_ID = self.get_student_ID()
         self.course_select_Turn_ID = self.get_course_select_Turn_ID()
         self.addable_lessons_json = self.get_addable_lessons_json()
@@ -54,9 +54,6 @@ class Selector:
         session2.get(
             html.headers['location'], headers=HEADERS, allow_redirects=False)
         return session2
-
-    def re_login(self):
-        self.brow = self.login()
 
     def get_student_ID(self):
         course_select = 'https://jw.ustc.edu.cn/for-std/course-select'
@@ -115,7 +112,7 @@ class Selector:
         return result
 
 
-class Direct_Selector(Selector):
+class DirectSelector(Selector):
     def __init__(self, new_course_code, period, stable_mode, identity):
         super().__init__(identity)
         self.new_course_code = new_course_code
@@ -135,7 +132,7 @@ class Direct_Selector(Selector):
 
             if self.stable_mode:
                 print("重新登录中...")
-                self.re_login()
+                self.brow = self.login()
                 # Must add this, or new "brow" can't get/post in following request
                 self.get_student_ID()
 
@@ -149,8 +146,8 @@ class Direct_Selector(Selector):
             }
 
             # TODO
-            # 此处删掉的内容约 3 行左右，
-            # 用于得到直选课时的 request_ID
+            # 此处删掉的内容约 3 行，用于得到直选课时的 request_ID
+            # How to: self.brow.post(...) then parse the result
 
             time.sleep(self.period * 0.5 * uniform(0.6, 1.4))
 
@@ -162,7 +159,7 @@ class Direct_Selector(Selector):
                 message = "成功选择 %s 的《%s》，程序退出！" % (
                     self.new_course_teacher, self.new_course_name)
                 print(message)
-                self.sender.send_mail(message, message)
+                MailSender.send_mail(message, message)
                 break
             else:
                 print("直选失败，失败原因： " + result['errorMessage']['textZh'])
@@ -170,7 +167,7 @@ class Direct_Selector(Selector):
             time.sleep(self.period * 0.5 * uniform(0.6, 1.4))
 
 
-class Course_Changer(Selector):
+class CourseChanger(Selector):
     def __init__(self, new_course_code, period, old_course_code, reason, stable_mode, identity):
         super().__init__(identity)
         self.new_course_code = new_course_code
@@ -209,10 +206,10 @@ class Course_Changer(Selector):
 
             if self.stable_mode:
                 print("重新登录中...")
-                self.re_login()
+                self.brow = self.login()
                 # Must add this, or new "brow" can't get/post in following request
                 self.get_student_ID()
-                
+
             pre_check_url = 'https://jw.ustc.edu.cn/for-std/course-adjustment-apply/preCheck'
             pre_check_data = [{
                 'oldLessonAssoc': int(self.old_course_ID),
@@ -242,10 +239,11 @@ class Course_Changer(Selector):
                     'scheduleGroupAssoc': None
                 }]
             }
+            change_data = json.dumps(change_data)
 
             # TODO
-            # 此处删掉的内容约 4 行左右，
-            # 用于得到换班时的 request_ID
+            # 此处删掉的内容约 3 行，用于得到换班时的 request_ID
+            # How to: self.brow.post(...) then parse the result
 
             time.sleep(self.period * 0.5 * uniform(0.6, 1.4))
 
@@ -257,7 +255,7 @@ class Course_Changer(Selector):
                 message = "成功换班到 %s 的《%s》，程序退出！" % (
                     self.new_course_teacher, self.new_course_name)
                 print(message)
-                self.sender.send_mail(message, message)
+                MailSender.send_mail(message, message)
                 break
             else:
                 print("换班失败，失败原因： " + result['errorMessage']['textZh'])
@@ -272,8 +270,8 @@ def main():
                         help="New course code, e.g. PE00120.02")
     parser.add_argument("old_course_code", type=str, nargs='?',
                         help="Old course code, e.g. PE00120.01")
-    parser.add_argument("reason", type=str, nargs='?',
-                        help="Reason to change course")
+    parser.add_argument("reason", type=str, nargs='?', default='',
+                        help="Reason to change course (not necessary)")
     parser.add_argument(
         "-p", "--period", type=float, default=5.0, help="Specify a period. (unit: second, default: 5.0)")
     parser.add_argument(
@@ -284,7 +282,7 @@ def main():
 
     # print(args)
 
-    worker = Direct_Selector(args.new_course_code, args.period, args.stable_mode, args.identity) if args.old_course_code == None else Course_Changer(
+    worker = DirectSelector(args.new_course_code, args.period, args.stable_mode, args.identity) if args.old_course_code == None else CourseChanger(
         args.new_course_code, args.period, args.old_course_code, args.reason, args.stable_mode, args.identity)
 
     for i in range(MAX_TIME):
@@ -293,7 +291,7 @@ def main():
             break
         except Exception as e:
             timestamp = time.asctime(time.localtime(time.time()))
-            title = "第 %d 次出现异常！ %s" % (i+1, timestamp)
+            title = "第 %d 次出现异常！ %s" % (i + 1, timestamp)
             body = "%s %s" % (str(e), timestamp)
             print(title)
             print(body)
