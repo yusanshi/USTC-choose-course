@@ -3,9 +3,9 @@ import json
 import re
 import time
 import argparse
+import smtplib
 from bs4 import BeautifulSoup
 from random import uniform
-import smtplib
 from email.mime.text import MIMEText
 from email.header import Header
 from config import *
@@ -31,7 +31,7 @@ class Selector:
         self.identity = identity
         self.brow = self.login()
         self.student_ID = self.get_student_ID()
-        self.course_select_Turn_ID = self.get_course_select_Turn_ID()
+        self.course_select_turn_ID = self.get_course_select_turn_ID()
         self.addable_lessons_json = self.get_addable_lessons_json()
 
     def login(self):
@@ -61,7 +61,7 @@ class Selector:
             course_select, headers=HEADERS, allow_redirects=False)
         return temp.headers['location'].split('/')[-1]
 
-    def get_course_select_Turn_ID(self):
+    def get_course_select_turn_ID(self):
         data_for_open_turn = {
             'bizTypeId': '2',
             'studentId': self.student_ID,
@@ -76,7 +76,7 @@ class Selector:
     def get_addable_lessons_json(self):
         get_ID_url = 'https://jw.ustc.edu.cn/ws/for-std/course-select/addable-lessons'
         get_ID_data = {
-            'turnId': self.course_select_Turn_ID,
+            'turnId': self.course_select_turn_ID,
             'studentId': self.student_ID
         }
         addable_lessons = self.brow.post(
@@ -140,7 +140,7 @@ class DirectSelector(Selector):
             seletion_data = {
                 'studentAssoc': self.student_ID,
                 'lessonAssoc': self.new_course_ID,
-                'courseSelectTurnAssoc': self.course_select_Turn_ID,
+                'courseSelectTurnAssoc': self.course_select_turn_ID,
                 'scheduleGroupAssoc': '',
                 'virtualCost': '0'
             }
@@ -184,7 +184,7 @@ class CourseChanger(Selector):
     def get_semester_ID(self):
         course_select = 'https://jw.ustc.edu.cn/for-std/course-select'
         url_temp = course_select + '/' + self.student_ID + \
-            '/turn/' + self.course_select_Turn_ID + '/select'
+            '/turn/' + self.course_select_turn_ID + '/select'
         semester_ID_temp = self.brow.get(
             url_temp, headers=HEADERS, allow_redirects=False)
         semester_ID = BeautifulSoup(semester_ID_temp.text, 'lxml')
