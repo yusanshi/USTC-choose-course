@@ -29,10 +29,10 @@ class MailSender:
 class Selector:
     def __init__(self, identity):
         self.identity = identity
-        self.brow = self.login()
+        self.session = self.login()
         self.student_ID = self.get_student_ID()
         self.course_select_turn_ID = self.get_course_select_turn_ID()
-        self.addable_lessons_json = self.get_addable_lessons_json()
+        self.addable_lessons = self.get_addable_lessons()
 
     def login(self):
         url = 'https://passport.ustc.edu.cn/login?service=https://jw.ustc.edu.cn/ucas-sso/login'
@@ -57,7 +57,7 @@ class Selector:
 
     def get_student_ID(self):
         course_select = 'https://jw.ustc.edu.cn/for-std/course-select'
-        temp = self.brow.get(
+        temp = self.session.get(
             course_select, headers=HEADERS, allow_redirects=False)
         return temp.headers['location'].split('/')[-1]
 
@@ -67,28 +67,28 @@ class Selector:
             'studentId': self.student_ID,
         }
         open_turns = 'https://jw.ustc.edu.cn/ws/for-std/course-select/open-turns'
-        temp_1 = self.brow.post(open_turns, headers=HEADERS,
+        temp_1 = self.session.post(open_turns, headers=HEADERS,
                                 data=data_for_open_turn, allow_redirects=False)
         temp_2 = BeautifulSoup(temp_1.text, 'lxml')
         temp_2 = json.loads(temp_2.p.string)
         return str(temp_2[0]['id'])
 
-    def get_addable_lessons_json(self):
+    def get_addable_lessons(self):
         get_ID_url = 'https://jw.ustc.edu.cn/ws/for-std/course-select/addable-lessons'
         get_ID_data = {
             'turnId': self.course_select_turn_ID,
             'studentId': self.student_ID
         }
-        addable_lessons = self.brow.post(
+        addable_lessons = self.session.post(
             get_ID_url, data=get_ID_data, headers=HEADERS, allow_redirects=False)
         return json.loads(addable_lessons.text)
 
-    def parse_from_code(self, course_code):
+    def get_course_info(self, course_code):
         course_ID = None
         course_name = None
         course_teacher = None
         if course_code != None:
-            for item in self.addable_lessons_json:
+            for item in self.addable_lessons:
                 if item['code'] == course_code:
                     course_ID = str(item['id'])
                     course_name = item['course']['nameZh']
@@ -105,7 +105,7 @@ class Selector:
             'requestId': request_ID
         }
 
-        temp_5 = self.brow.post(add_drop_url, data=add_drop_data,
+        temp_5 = self.session.post(add_drop_url, data=add_drop_data,
                                 headers=HEADERS, allow_redirects=False)
         temp_5 = BeautifulSoup(temp_5.text, 'lxml')
         result = json.loads(temp_5.p.string)
@@ -118,7 +118,7 @@ class DirectSelector(Selector):
         self.new_course_code = new_course_code
         self.period = period
         self.stable_mode = stable_mode
-        self.new_course_ID, self.new_course_name, self.new_course_teacher = self.parse_from_code(
+        self.new_course_ID, self.new_course_name, self.new_course_teacher = self.get_course_info(
             self.new_course_code)
 
     def work(self):
@@ -132,8 +132,8 @@ class DirectSelector(Selector):
 
             if self.stable_mode:
                 print("重新登录中...")
-                self.brow = self.login()
-                # Must add this, or new "brow" can't get/post in following request
+                self.session = self.login()
+                # Must add this, or new "session" can't get/post in following request
                 self.get_student_ID()
 
             seletion_url = 'https://jw.ustc.edu.cn/ws/for-std/course-select/add-request'
@@ -147,7 +147,7 @@ class DirectSelector(Selector):
 
             # TODO
             # 此处删掉的内容约 3 行，用于得到直选课时的 request_ID
-            # How to: self.brow.post(...) then parse the result
+            # How to: self.session.post(...) then parse the result
 
             time.sleep(self.period * 0.5 * uniform(0.6, 1.4))
 
@@ -175,9 +175,9 @@ class CourseChanger(Selector):
         self.old_course_code = old_course_code
         self.reason = reason
         self.stable_mode = stable_mode
-        self.new_course_ID, self.new_course_name, self.new_course_teacher = self.parse_from_code(
+        self.new_course_ID, self.new_course_name, self.new_course_teacher = self.get_course_info(
             self.new_course_code)
-        self.old_course_ID, self.old_course_name, self.old_course_teacher = self.parse_from_code(
+        self.old_course_ID, self.old_course_name, self.old_course_teacher = self.get_course_info(
             self.old_course_code)
         self.semester_ID = self.get_semester_ID()
 
@@ -185,7 +185,7 @@ class CourseChanger(Selector):
         course_select = 'https://jw.ustc.edu.cn/for-std/course-select'
         url_temp = course_select + '/' + self.student_ID + \
             '/turn/' + self.course_select_turn_ID + '/select'
-        semester_ID_temp = self.brow.get(
+        semester_ID_temp = self.session.get(
             url_temp, headers=HEADERS, allow_redirects=False)
         semester_ID = BeautifulSoup(semester_ID_temp.text, 'lxml')
         semester_ID = str(semester_ID)
@@ -206,8 +206,8 @@ class CourseChanger(Selector):
 
             if self.stable_mode:
                 print("重新登录中...")
-                self.brow = self.login()
-                # Must add this, or new "brow" can't get/post in following request
+                self.session = self.login()
+                # Must add this, or new "session" can't get/post in following request
                 self.get_student_ID()
 
             pre_check_url = 'https://jw.ustc.edu.cn/for-std/course-adjustment-apply/preCheck'
@@ -223,7 +223,7 @@ class CourseChanger(Selector):
             }]
             pre_check_data = json.dumps(pre_check_data)
 
-            self.brow.post(pre_check_url, data=pre_check_data,
+            self.session.post(pre_check_url, data=pre_check_data,
                            headers=HEADERS_JSON, allow_redirects=False)
 
             change_url = 'https://jw.ustc.edu.cn/for-std/course-adjustment-apply/add-drop-request'
@@ -243,7 +243,7 @@ class CourseChanger(Selector):
 
             # TODO
             # 此处删掉的内容约 3 行，用于得到换班时的 request_ID
-            # How to: self.brow.post(...) then parse the result
+            # How to: self.session.post(...) then parse the result
 
             time.sleep(self.period * 0.5 * uniform(0.6, 1.4))
 

@@ -14,6 +14,7 @@ SMTP_PASSWORD = '123456'  # SMTP 密码（部分邮箱需要填写授权码而�
 SENDER = '00000000@163.com'
 RECEIVER = '00000000@qq.com'
 
+# Headers used in GET/POST request. No need to modify.
 HEADERS = {
     'Connection': 'keep-alive',
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.142 Safari/537.36',
