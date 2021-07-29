@@ -381,7 +381,10 @@ def main():
             body = "%s %s" % (str(e), timestamp)
             print(title)
             print(body)
-            worker.sender.send_mail(title, body)
+            try:
+                MailSender.send_mail(title, body)
+            except Exception:
+                pass
             time.sleep(30)
 
 
