@@ -10,13 +10,14 @@
 
 ## 运行
 
-1. 修改 `config.py` 的内容，如不需要发邮件，可忽略邮件相关设置；
+1. `pip install requests bs4 lxml`；
 
-2. 补全 `main.py` 中缺失的两个 TODO 部分；
+2. 修改 `config.py` 的内容，如不需要发邮件，可忽略邮件相关设置；
 
-3. `pip install requests bs4 lxml`；
+3. 补全 `main.py` 中缺失的两个 TODO 部分；
 
-5. 直选课：`python main.py [new course code]`；
+4. 直选课：`python main.py [new course code]`；
+
    换班：`python main.py [new course code] [old course code] [reason]`。
    
    以上两个命令末尾可加入如下可选参数：
