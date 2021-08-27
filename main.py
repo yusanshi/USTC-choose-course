@@ -1,29 +1,12 @@
-import requests
 import json
-import re
 import time
 import argparse
-import smtplib
-from bs4 import BeautifulSoup
+
 from random import uniform
-from email.mime.text import MIMEText
-from email.header import Header
 from distutils.util import strtobool
-from config import *
-
-
-class MailSender:
-    @staticmethod
-    def send_mail(title, body):
-        message = MIMEText('<h1>' + body + '</h1>', 'html', 'utf-8')
-        message['From'] = SENDER
-        message['To'] = RECEIVER
-        message['Subject'] = Header(title, 'utf-8')
-
-        smtpObj = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT)
-        smtpObj.login(SMTP_USERNAME, SMTP_PASSWORD)
-        smtpObj.sendmail(SENDER, [RECEIVER], message.as_string())
-        smtpObj.quit()
+from login import login
+from send_mail import send_mail
+from config import USERNAME, MAX_TIME
 
 
 class Selector:
@@ -36,50 +19,25 @@ class Selector:
 
     def login(self):
         if self.identity == 'undergraduate':
-            service = 'https://jw.ustc.edu.cn/ucas-sso/login'
+            service_url = 'https://jw.ustc.edu.cn/ucas-sso/login'
         elif self.identity == 'postgraduate':
-            service = 'http://yjs.ustc.edu.cn/default.asp'
+            service_url = 'https://yjs.ustc.edu.cn/default.asp'
+        else:
+            raise ValueError
+        self.session = login(service_url)
+
+    def get_student_ID(self):
+        if self.identity == 'undergraduate':
+            url = 'https://jw.ustc.edu.cn/for-std/course-select'
+        elif self.identity == 'postgraduate':
+            ASPSESSIONIDCSAASBCS = self.session.cookies.get(
+                'ASPSESSIONIDCSAASBCS')
+            url = f'https://jw.ustc.edu.cn/graduate-login?stn={USERNAME}&ASPSESSIONIDCSAASBCS={ASPSESSIONIDCSAASBCS}'
         else:
             raise ValueError
 
-        url = f'https://passport.ustc.edu.cn/login?service={service}'
-
-        data = {
-            'model': 'uplogin.jsp',
-            'service': service,
-            'warn': '',
-            'showCode': '',
-            'username': USERNAME,
-            'password': PASSWORD,
-            'button': '',
-        }
-
-        session = requests.Session()
-        html = session.post(url,
-                            headers=HEADERS,
-                            data=data,
-                            allow_redirects=False)
-
-        session2 = requests.Session()
-        session2.get(html.headers['location'],
-                     headers=HEADERS,
-                     allow_redirects=False)
-        self.session = session2
-
-    def get_student_ID(self):
-        if self.identity == 'postgraduate':
-            ASPSESSIONIDCSBDSCBT = self.session.cookies.get_dict(
-                'yjs.ustc.edu.cn')['ASPSESSIONIDCSBDSCBT']
-            self.session.get(
-                f'https://jw.ustc.edu.cn/graduate-login?stn={USERNAME}&ASPSESSIONIDCSBDSCBT={ASPSESSIONIDCSBDSCBT}',
-                headers=HEADERS,
-                allow_redirects=False)
-
-        course_select = 'https://jw.ustc.edu.cn/for-std/course-select'
-        temp = self.session.get(course_select,
-                                headers=HEADERS,
-                                allow_redirects=False)
-        return temp.headers['location'].split('/')[-1]
+        r = self.session.get(url)
+        return r.url.split('/')[-1]
 
     def get_course_select_turn_ID(self):
         if self.identity == 'undergraduate':
@@ -89,57 +47,41 @@ class Selector:
         else:
             raise ValueError
 
-        data_for_open_turn = {
+        data = {
             'bizTypeId': bizTypeId,
             'studentId': self.student_ID,
         }
-        open_turns = 'https://jw.ustc.edu.cn/ws/for-std/course-select/open-turns'
-        temp_1 = self.session.post(open_turns,
-                                   headers=HEADERS,
-                                   data=data_for_open_turn,
-                                   allow_redirects=False)
-        temp_2 = BeautifulSoup(temp_1.text, 'lxml')
-        temp_2 = json.loads(temp_2.p.string)
-        return str(temp_2[0]['id'])
+        url = 'https://jw.ustc.edu.cn/ws/for-std/course-select/open-turns'
+        r = self.session.post(url, data=data)
+        r = json.loads(r.text)
+        assert len(r) == 1
+        return r[0]['id']
 
     def get_addable_lessons(self):
-        get_ID_url = 'https://jw.ustc.edu.cn/ws/for-std/course-select/addable-lessons'
-        get_ID_data = {
+        url = 'https://jw.ustc.edu.cn/ws/for-std/course-select/addable-lessons'
+        data = {
             'turnId': self.course_select_turn_ID,
             'studentId': self.student_ID
         }
-        addable_lessons = self.session.post(get_ID_url,
-                                            data=get_ID_data,
-                                            headers=HEADERS,
-                                            allow_redirects=False)
-        return json.loads(addable_lessons.text)
+        r = self.session.post(url, data=data)
+        return json.loads(r.text)
 
     def get_course_info(self, course_code):
-        course_ID = None
-        course_name = None
-        course_teacher = None
-        if course_code != None:
-            for item in self.addable_lessons:
-                if item['code'] == course_code:
-                    course_ID = str(item['id'])
-                    course_name = item['course']['nameZh']
-                    course_teacher = ' '.join(teacher['nameZh']
-                                              for teacher in item['teachers'])
-                    break
-
-        return course_ID, course_name, course_teacher
+        for item in self.addable_lessons:
+            if item['code'] == course_code:
+                course_ID = str(item['id'])
+                course_name = item['course']['nameZh']
+                course_teacher = ' '.join(teacher['nameZh']
+                                          for teacher in item['teachers'])
+                return course_ID, course_name, course_teacher
+        return None, None, None
 
     def process_request_ID(self, request_ID):
-        add_drop_url = 'https://jw.ustc.edu.cn/ws/for-std/course-select/add-drop-response'
-        add_drop_data = {'studentId': self.student_ID, 'requestId': request_ID}
+        url = 'https://jw.ustc.edu.cn/ws/for-std/course-select/add-drop-response'
+        data = {'studentId': self.student_ID, 'requestId': request_ID}
 
-        temp_5 = self.session.post(add_drop_url,
-                                   data=add_drop_data,
-                                   headers=HEADERS,
-                                   allow_redirects=False)
-        temp_5 = BeautifulSoup(temp_5.text, 'lxml')
-        result = json.loads(temp_5.p.string)
-        return result
+        r = self.session.post(url, data=data)
+        return json.loads(r.text)
 
 
 class DirectSelector(Selector):
@@ -152,22 +94,21 @@ class DirectSelector(Selector):
             self.new_course_code)
 
     def work(self):
-        print("开始选 %s 的《%s》..." %
-              (self.new_course_teacher, self.new_course_name))
+        print(f'开始选 {self.new_course_teacher} 的《{self.new_course_name}》...')
 
         count = 1
         while True:
-            print("正在第 %d 次尝试..." % count)
+            print(f'正在第 {count} 次尝试...')
             count += 1
 
             if self.stable_mode:
-                print("重新登录中...")
+                print('重新登录中...')
                 self.login()
-                # Must add this, or new "session" can't get/post in following request
+                # Must add this, or new 'session' can't get/post in following request
                 self.get_student_ID()
 
-            seletion_url = 'https://jw.ustc.edu.cn/ws/for-std/course-select/add-request'
-            seletion_data = {
+            url = 'https://jw.ustc.edu.cn/ws/for-std/course-select/add-request'
+            data = {
                 'studentAssoc': self.student_ID,
                 'lessonAssoc': self.new_course_ID,
                 'courseSelectTurnAssoc': self.course_select_turn_ID,
@@ -175,31 +116,22 @@ class DirectSelector(Selector):
                 'virtualCost': '0'
             }
 
-            temp_4 = self.session.post(seletion_url,
-                                       data=seletion_data,
-                                       headers=HEADERS,
-                                       allow_redirects=False)
-
-            # TODO: 用约 2 行代码从 `temp_4` 中获取 `request_ID`
-            request_ID = 'request_ID parsed from temp_4 with BeautifulSoup'
+            # TODO: 用约 2 行代码获取 request_ID
+            request_ID = 'request_ID'
 
             time.sleep(self.period * 0.5 * uniform(0.6, 1.4))
 
             result = self.process_request_ID(request_ID)
 
-            if result == None:
-                print("响应为空，重试...")
-            elif result['success'] == True:
-                message = "成功选择 %s 的《%s》，程序退出！" % (self.new_course_teacher,
-                                                   self.new_course_name)
+            if result is None:
+                print('响应为空，重试...')
+            elif result['success'] is True:
+                message = f'成功选择 {self.new_course_teacher} 的《{self.new_course_name}》，程序退出！'
                 print(message)
-                try:
-                    MailSender.send_mail(message, message)
-                except Exception:
-                    pass
+                send_mail(message, message)
                 break
             else:
-                print("直选失败，失败原因： " + result['errorMessage']['textZh'])
+                print('直选失败，失败原因： ' + result['errorMessage']['textZh'])
 
             time.sleep(self.period * 0.5 * uniform(0.6, 1.4))
 
@@ -220,102 +152,38 @@ class CourseChanger(Selector):
         self.semester_ID = self.get_semester_ID()
 
     def get_semester_ID(self):
-        course_select = 'https://jw.ustc.edu.cn/for-std/course-select'
-        url_temp = course_select + '/' + self.student_ID + \
-            '/turn/' + self.course_select_turn_ID + '/select'
-        semester_ID_temp = self.session.get(url_temp,
-                                            headers=HEADERS,
-                                            allow_redirects=False)
-        semester_ID = BeautifulSoup(semester_ID_temp.text, 'lxml')
-        semester_ID = str(semester_ID)
-        pattern = re.compile(r'semesterId:\s\d{1,5},')
-        semester_ID = pattern.findall(semester_ID)
-        assert len(semester_ID) == 1
-        pattern_2 = re.compile(r'\d+')
-        return pattern_2.findall(semester_ID[0])[0]
+        raise NotImplementedError
 
     def work(self):
-        print("开始将《%s》从 %s 换到 %s" %
-              (self.new_course_name, self.old_course_teacher,
-               self.new_course_teacher))
-
+        print(
+            f'开始将《{self.new_course_name}》从 {self.old_course_teacher} 换到 {self.new_course_teacher}'
+        )
         count = 1
         while True:
-            print("正在第 %d 次尝试..." % count)
+            print(f'正在第 {count} 次尝试...')
             count += 1
 
             if self.stable_mode:
-                print("重新登录中...")
+                print('重新登录中...')
                 self.login()
-                # Must add this, or new "session" can't get/post in following request
+                # Must add this, or new 'session' can't get/post in following request
                 self.get_student_ID()
 
-            pre_check_url = 'https://jw.ustc.edu.cn/for-std/course-adjustment-apply/preCheck'
-            pre_check_data = [{
-                'oldLessonAssoc': int(self.old_course_ID),
-                'newLessonAssoc': int(self.new_course_ID),
-                'studentAssoc': int(self.student_ID),
-                'semesterAssoc': int(self.semester_ID),
-                'bizTypeAssoc': 2,
-                'applyReason': self.reason,
-                'applyTypeAssoc': 5,
-                'scheduleGroupAssoc': None
-            }]
-            pre_check_data = json.dumps(pre_check_data)
-
-            self.session.post(pre_check_url,
-                              data=pre_check_data,
-                              headers=HEADERS_JSON,
-                              allow_redirects=False)
-
-            change_url = 'https://jw.ustc.edu.cn/for-std/course-adjustment-apply/add-drop-request'
-            change_data = {
-                'studentAssoc':
-                int(self.student_ID),
-                'semesterAssoc':
-                int(self.semester_ID),
-                'bizTypeAssoc':
-                2,
-                'applyTypeAssoc':
-                5,
-                'checkFalseInsertApply':
-                False,
-                'lessonAndScheduleGroups': [{
-                    'lessonAssoc':
-                    int(self.new_course_ID),
-                    'dropLessonAssoc':
-                    int(self.old_course_ID),
-                    'scheduleGroupAssoc':
-                    None
-                }]
-            }
-            change_data = json.dumps(change_data)
-
-            temp_4 = self.session.post(change_url,
-                                       data=change_data,
-                                       headers=HEADERS_JSON,
-                                       allow_redirects=False)
-
-            # TODO: 用约 2 行代码从 `temp_4` 中获取 `request_ID`（和上一处的代码一致）
-            request_ID = 'request_ID parsed from temp_4 with BeautifulSoup'
+            raise NotImplementedError
 
             time.sleep(self.period * 0.5 * uniform(0.6, 1.4))
 
             result = self.process_request_ID(request_ID)
 
-            if result == None:
-                print("响应为空，重试...")
-            elif result['success'] == True:
-                message = "成功换班到 %s 的《%s》，程序退出！" % (self.new_course_teacher,
-                                                    self.new_course_name)
+            if result is None:
+                print('响应为空，重试...')
+            elif result['success'] is True:
+                message = f'成功换班到 {self.new_course_teacher} 的《{self.new_course_name}》，程序退出！'
                 print(message)
-                try:
-                    MailSender.send_mail(message, message)
-                except Exception:
-                    pass
+                send_mail(message, message)
                 break
             else:
-                print("换班失败，失败原因： " + result['errorMessage']['textZh'])
+                print('换班失败，失败原因： ' + result['errorMessage']['textZh'])
 
             time.sleep(self.period * 0.5 * uniform(0.6, 1.4))
 
@@ -325,48 +193,48 @@ def main():
         description=
         'Support choosing course directly or changing course. If choosing course, provide new course code. If changing course, also provide old course code and reason to change.'
     )
-    parser.add_argument("new_course_code",
+    parser.add_argument('new_course_code',
                         type=str,
-                        help="New course code, e.g. PE00120.02")
-    parser.add_argument("old_course_code",
+                        help='New course code, e.g. PE00120.02')
+    parser.add_argument('old_course_code',
                         type=str,
                         nargs='?',
-                        help="Old course code, e.g. PE00120.01")
-    parser.add_argument("reason",
+                        help='Old course code, e.g. PE00120.01')
+    parser.add_argument('reason',
                         type=str,
                         nargs='?',
                         default='',
-                        help="Reason to change course (not necessary)")
-    parser.add_argument("-p",
-                        "--period",
+                        help='Reason to change course (not necessary)')
+    parser.add_argument('-p',
+                        '--period',
                         type=float,
                         default=5.0,
-                        help="Specify a period. (unit: second, default: 5.0)")
+                        help='Specify a period. (unit: second, default: 5.0)')
     parser.add_argument(
-        "-s",
-        "--stable_mode",
+        '-s',
+        '--stable_mode',
         type=lambda x: bool(strtobool(x)),
         default=False,
         help=
-        "Whether to enable stable mode. If enabled, this script will relogin after each try (default: False)"
+        'Whether to enable stable mode. If enabled, this script will relogin after each try (default: False)'
     )
     parser.add_argument(
-        "-i",
-        "--identity",
+        '-i',
+        '--identity',
         type=str,
         default='undergraduate',
         choices=['undergraduate', 'postgraduate'],
         help=
-        "Your identity, undergraduate or postgraduate (default: undergraduate)"
+        'Your identity, undergraduate or postgraduate (default: undergraduate)'
     )
     args = parser.parse_args()
     print(args)
 
-    if args.old_course_code == None:
+    if args.old_course_code is None:
         worker = DirectSelector(args.new_course_code, args.period,
                                 args.stable_mode, args.identity)
     else:
-        assert args.identity != 'postgraduate', 'unimplemented!'
+        raise NotImplementedError
         worker = CourseChanger(args.new_course_code, args.period,
                                args.old_course_code, args.reason,
                                args.stable_mode, args.identity)
@@ -377,16 +245,17 @@ def main():
             break
         except Exception as e:
             timestamp = time.asctime(time.localtime(time.time()))
-            title = "第 %d 次出现异常！ %s" % (i + 1, timestamp)
-            body = "%s %s" % (str(e), timestamp)
+            title = f'第 {i + 1} 次出现异常！ {timestamp}'
+            body = f'{str(e)} {timestamp}'
             print(title)
             print(body)
-            try:
-                MailSender.send_mail(title, body)
-            except Exception:
-                pass
+            send_mail(title, body)
             time.sleep(30)
+    else:
+        message = '异常次数达到最大值，程序退出！'
+        print(message)
+        send_mail(message, message)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
