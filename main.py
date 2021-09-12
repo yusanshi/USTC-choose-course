@@ -3,7 +3,6 @@ import time
 import argparse
 
 from random import uniform
-from distutils.util import strtobool
 from login import login
 from send_mail import send_mail
 from config import USERNAME, MAX_TIME
@@ -30,12 +29,11 @@ class Selector:
         if self.identity == 'undergraduate':
             url = 'https://jw.ustc.edu.cn/for-std/course-select'
         elif self.identity == 'postgraduate':
-            ASPSESSIONIDCSAASBCS = self.session.cookies.get(
-                'ASPSESSIONIDCSAASBCS')
-            url = f'https://jw.ustc.edu.cn/graduate-login?stn={USERNAME}&ASPSESSIONIDCSAASBCS={ASPSESSIONIDCSAASBCS}'
+            ASPSESSIONID_KEY, ASPSESSIONID_VALUE = list(
+                self.session.cookies.get_dict('yjs.ustc.edu.cn').items())[0]
+            url = f'https://jw.ustc.edu.cn/graduate-login?stn={USERNAME}&{ASPSESSIONID_KEY}={ASPSESSIONID_VALUE}'
         else:
             raise ValueError
-
         r = self.session.get(url)
         return r.url.split('/')[-1]
 
@@ -85,11 +83,10 @@ class Selector:
 
 
 class DirectSelector(Selector):
-    def __init__(self, new_course_code, period, stable_mode, identity):
+    def __init__(self, new_course_code, period, identity):
         super().__init__(identity)
         self.new_course_code = new_course_code
         self.period = period
-        self.stable_mode = stable_mode
         self.new_course_ID, self.new_course_name, self.new_course_teacher = self.get_course_info(
             self.new_course_code)
 
@@ -100,12 +97,6 @@ class DirectSelector(Selector):
         while True:
             print(f'正在第 {count} 次尝试...')
             count += 1
-
-            if self.stable_mode:
-                print('重新登录中...')
-                self.login()
-                # Must add this, or new 'session' can't get/post in following request
-                self.get_student_ID()
 
             url = 'https://jw.ustc.edu.cn/ws/for-std/course-select/add-request'
             data = {
@@ -138,13 +129,12 @@ class DirectSelector(Selector):
 
 class CourseChanger(Selector):
     def __init__(self, new_course_code, period, old_course_code, reason,
-                 stable_mode, identity):
+                 identity):
         super().__init__(identity)
         self.new_course_code = new_course_code
         self.period = period
         self.old_course_code = old_course_code
         self.reason = reason
-        self.stable_mode = stable_mode
         self.new_course_ID, self.new_course_name, self.new_course_teacher = self.get_course_info(
             self.new_course_code)
         self.old_course_ID, self.old_course_name, self.old_course_teacher = self.get_course_info(
@@ -162,12 +152,6 @@ class CourseChanger(Selector):
         while True:
             print(f'正在第 {count} 次尝试...')
             count += 1
-
-            if self.stable_mode:
-                print('重新登录中...')
-                self.login()
-                # Must add this, or new 'session' can't get/post in following request
-                self.get_student_ID()
 
             raise NotImplementedError
 
@@ -211,14 +195,6 @@ def main():
                         default=5.0,
                         help='Specify a period. (unit: second, default: 5.0)')
     parser.add_argument(
-        '-s',
-        '--stable_mode',
-        type=lambda x: bool(strtobool(x)),
-        default=False,
-        help=
-        'Whether to enable stable mode. If enabled, this script will relogin after each try (default: False)'
-    )
-    parser.add_argument(
         '-i',
         '--identity',
         type=str,
@@ -230,14 +206,16 @@ def main():
     args = parser.parse_args()
     print(args)
 
+    assert args.period >= 5.0, 'FBI Warning: Period too small! If you insist on doing so, comment out this line of code at your own risk!'
+
     if args.old_course_code is None:
         worker = DirectSelector(args.new_course_code, args.period,
-                                args.stable_mode, args.identity)
+                                args.identity)
     else:
         raise NotImplementedError
         worker = CourseChanger(args.new_course_code, args.period,
                                args.old_course_code, args.reason,
-                               args.stable_mode, args.identity)
+                               args.identity)
 
     for i in range(MAX_TIME):
         try:
